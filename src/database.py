@@ -1,5 +1,8 @@
 __author__ = 'Jakob'
-import redis
+try:
+    import redis
+except ImportError:
+    pass
 
 class RedisDatabase(object):
     def __init__(self, host, port):
@@ -11,7 +14,7 @@ class RedisDatabase(object):
 
 
 class TestDatabase(object):
-    def __init__(self, host, port):
+    def __init__(self):
         self.db = {}
         self.user_db = {}
 
