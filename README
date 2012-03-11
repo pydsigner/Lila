@@ -1,0 +1,24 @@
+Fleshing out a simple protocol sent in line buffered JSON
+
+Dependancies:
+    -Twisted
+    -Redis Server
+    -PyRedis
+
+Protocol:
+    Everything is a json dumped dict.
+
+    Connection
+    Client -> Server: {"USER":username, "PASS":password}
+    if auth:
+        Server -> Client: {"STATUS":"OK"}
+    else (after 25 seconds or failed login):
+        Server -> Client: {"STATUS" : "REJECTED"}
+
+    Every 25 seconds
+    Server -> Client: {"PING":uid}
+    Client -> Server: {"PONG": same uid}
+    if fail or timeout:
+        {"STATUS" : "REJECTED", "INFO" : "Did not reply to last ping."}
+    else:
+        repeat 25 seconds later
