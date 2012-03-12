@@ -17,17 +17,30 @@ def shutdownOnError(message):
 
 
 class Server(LineReceiver):
+    """
+    The server for the protocol, handles heartbeats, authentication and handle dispatching of any JSON data getting
+    sent to it, based on the Twisted LineReciever it takes single \n delimited lines over the net.
+    """
+    delimiter="\n"
     def __init__(self):
         self.state = "PRE_AUTH"
         self.last_ping = None
         self.alive = True
+        self.beat = None
 
     def lineReceived(self, line):
-        """Handle a line that just came down the pipe, dispatch it depending on our state and the contents."""
+        """
+        Handle a line that just came down the pipe, dispatch it depending on our state and the contents.
+        """
         try:
+            # Rip off the linux carrage return
+            line = line.rstrip("\r")
+            log.msg(repr(line))
             data = json.loads(line)
-        except Exception:
-            self.reject_kindly_with_msg("Unable to decode?")
+        except Exception, e:
+            # Its an error lets post it back.
+            response = {"STATUS":"ERR", "INFO":str(e)}
+            self.sendLine("Unable to decode?")
             return
         if self.state == "PRE_AUTH":
             self.handle_auth(data)
@@ -39,7 +52,10 @@ class Server(LineReceiver):
             self.handle_dc(data)
 
     def handle_pong(self, data):
-        """Handle a PING response. If its not a match then die hard and fast."""
+        """
+        Handle a PING response. If its not a match then drop the connection.
+        They probably timed out or have network issues
+        """
         if data.get("PONG") != self.last_ping.get("PING"):
             self.transport.loseConnection()
         else:
@@ -77,6 +93,11 @@ class Server(LineReceiver):
             self.reject_kindly()
 
     def heartbeat(self):
+        """
+        See if the connected client managed to reply to the last ping, if they didn't give up
+        Otherwise post off a new ping, pretend they are dead till we find out otherwise,
+        then call ourselves again in another 25 seconds.
+        """
         if not self.alive:
             self.reject_kindly_with_msg("Did not reply to last ping.")
             return
@@ -87,14 +108,27 @@ class Server(LineReceiver):
         self.beat = reactor.callLater(25, self.heartbeat)
 
     def connectionLost(self, reason):
+        """
+        Handles the connectionLost event.
+        When the connection is lost decrement the number of clients.
+        Then pop off the key, value in the connections dict, remember they might not have authed yet so we have to
+        try poping both values
+        """
         self.factory.clients -= 1
         try:
-            self.factory.connections.pop(self.hostname)
+            self.factory.connections.pop(self.user)
         except KeyError:
             # Could be they are stored under the username not their hostname.
-            self.factory.connections.pop(self.user)
+            self.factory.connections.pop(self.hostname)
 
     def reject_kindly(self):
+        """
+        Let the client know they are going to get cut off
+        """
+        try:
+            self.beat.cancel() # might be before or after the heartbeat.
+        except Exception:
+            pass
         log.msg("Rejected client: %s" % self.hostname)
         answer = {"STATUS": "REJECTED"}
         self.sendLine(json.dumps(answer))
@@ -102,7 +136,10 @@ class Server(LineReceiver):
         reactor.callLater(1.5, self.transport.loseConnection)
 
     def reject_kindly_with_msg(self, msg):
-        log.msg("Rejected client: %s for reason %s" % (self.user, msg))
+        """
+        Reject the client but this time with a nice pretty message.
+        """
+        log.msg("Rejected client: %s for reason %s" % (self.hostname, msg))
         answer = {"STATUS": "REJECTED", "INFO": msg}
         self.sendLine(json.dumps(answer))
         # Grace period for killing the connection.
@@ -117,6 +154,10 @@ class Server(LineReceiver):
             self.reject_kindly()
 
     def connectionMade(self):
+        """
+        Connection has been made, set PRE_AUTH state, get our hostname and then assign ourselves to the connections
+        After this call the first heartbeat.
+        """
         self.state = "PRE_AUTH"
         self.hostname = self.transport.getHost().host
         log.msg(self.hostname)
@@ -126,8 +167,8 @@ class Server(LineReceiver):
         else:
             self.reject_kindly()
         reactor.callLater(20, self.authed_in_time)
-        reactor.callLater(25, self.heartbeat)
-
+        self.beat = reactor.callLater(25, self.heartbeat)
+        log.msg(self.factory.connections)
 
 class ServerFactory(Factory):
     protocol = Server

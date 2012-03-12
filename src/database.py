@@ -16,7 +16,7 @@ class RedisDatabase(object):
 class TestDatabase(object):
     def __init__(self):
         self.db = {}
-        self.user_db = {}
+        self.user_db = {'test':'test','dave':'dave'}
 
     def authenticate_user(self, user, password):
         return self.user_db.get(user, False) == password
