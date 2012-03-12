@@ -50,6 +50,17 @@ class Server(LineReceiver):
             self.handle_msg(data)
         if data.get("DC"):
             self.handle_dc(data)
+        if data.get("INFO"):
+            self.handle_info(data)
+
+    def handle_info(self, data):
+        details = {"CONNECTIONS":lambda this: this.factory.connections}
+        information = [data.get(key, False) for key in data.get("INFO") if data.get(key, False)]
+        out = []
+        for info in information:
+            out.append(details[info](self))
+        self.sendLine(json.dumps({"STATUS" :"OK", "DATA":out}))
+
 
     def handle_pong(self, data):
         """
