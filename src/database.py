@@ -22,7 +22,7 @@ class TestDatabase(object):
         return self.user_db.get(user, False) == password
 
 redis_database = RedisDatabase("localhost", 6379)
-test_dabase = TestDatabase()
+test_database = TestDatabase()
 
 if __name__ == '__main__':
     print database.authenticate_user("test", "test")
