@@ -1,0 +1,4 @@
+codes:
+    999 - Auth success
+    998 - User not found
+    997 - Password mismatch

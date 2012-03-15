@@ -4,8 +4,6 @@ from twisted.protocols.basic import LineReceiver
 from twisted.internet.protocol import Factory
 from twisted.internet import reactor
 from twisted.python import log
-from database import test_database as database
-#from database import redis_database as database
 import uuid
 import json
 import sys
@@ -14,7 +12,6 @@ def shutdownOnError(message):
     """Die hard on any exceptions in the program."""
     if message["isError"]:
         reactor.stop()
-
 
 class Server(LineReceiver):
     """
@@ -27,6 +24,7 @@ class Server(LineReceiver):
         self.last_ping = None
         self.alive = True
         self.beat = None
+        self.user = None
 
     def lineReceived(self, line):
         """
@@ -53,14 +51,13 @@ class Server(LineReceiver):
         if data.get("INFO"):
             self.handle_info(data)
 
-    def handle_info(self, data):
-        details = {"CONNECTIONS":lambda this: this.factory.connections}
-        information = [data.get(key, False) for key in data.get("INFO") if data.get(key, False)]
-        out = []
-        for info in information:
-            out.append(details[info](self))
-        self.sendLine(json.dumps({"STATUS" :"OK", "DATA":out}))
+    def handle_dc(self, data):
+        """The user disconnected. Clean up"""
+        # Could be done in connectionLost ?
 
+    def handle_info(self, data):
+        """Write a neater and smarter information API"""
+        pass
 
     def handle_pong(self, data):
         """
@@ -70,6 +67,7 @@ class Server(LineReceiver):
         if data.get("PONG") != self.last_ping.get("PING"):
             self.transport.loseConnection()
         else:
+            log.msg("Got valid response from %s" % self.user)
             self.alive = True
 
     def handle_msg(self, data):
@@ -77,7 +75,7 @@ class Server(LineReceiver):
         Handle a message, if its addressed to someone then post it to them,
         otherwise tell my client that they are not online
         """
-        target = self.factory.connections[data.get("TO", None)]
+        target = self.factory.connections.get(data.get("TO", None))
         if target is None:
             response = {"STATUS": "FAIL", "INFO": "Failed to find partner online."}
             self.sendLine(json.dumps(response))
@@ -91,7 +89,9 @@ class Server(LineReceiver):
         """
         user = data.get("USER")
         password = data.get("PASS")
-        if database.authenticate_user(user, password):
+        authed, status = self.factory.database.authenticate_user(user, password)
+                
+        if authed:
             response = {"STATUS": "OK"}
             self.sendLine(json.dumps(response))
             self.user = user
@@ -100,8 +100,8 @@ class Server(LineReceiver):
             self.state = "LIVE"
             log.msg("Authenticated user %s. All is well, connections dict updated." % self.hostname)
         else:
-            log.msg("%s failed to authenticated, dropping their connection." % self.hostname)
-            self.reject_kindly()
+            log.msg("%s failed to auth with code %s, dropping their connection." % (self.hostname, status))
+            self.reject_kindly_with_msg("Failed to auth")
 
     def heartbeat(self):
         """
@@ -130,7 +130,10 @@ class Server(LineReceiver):
             self.factory.connections.pop(self.user)
         except KeyError:
             # Could be they are stored under the username not their hostname.
-            self.factory.connections.pop(self.hostname)
+            try:
+                self.factory.connections.pop(self.hostname)
+            except KeyError:
+                log.msg(self.factory.connections)
 
     def reject_kindly(self):
         """
@@ -150,6 +153,10 @@ class Server(LineReceiver):
         """
         Reject the client but this time with a nice pretty message.
         """
+        try:
+            self.beat.cancel()
+        except Exception:
+            pass
         log.msg("Rejected client: %s for reason %s" % (self.hostname, msg))
         answer = {"STATUS": "REJECTED", "INFO": msg}
         self.sendLine(json.dumps(answer))
@@ -184,12 +191,19 @@ class Server(LineReceiver):
 class ServerFactory(Factory):
     protocol = Server
 
-    def __init__(self):
+    def __init__(self, database):
         self.connections = {}
+        self.database = database
         self.clients = 0
+        self.user = None
+
+def main(port, database=None, debug=False, stdout=True):
+    if stdout:
+        log.startLogging(sys.stdout)
+    if debug:
+        log.addObserver(shutdownOnError)
+    reactor.listenTCP(port, ServerFactory(database))
+    reactor.run()
 
 if __name__ == '__main__':
-    log.startLogging(sys.stdout)
-    log.addObserver(shutdownOnError)
-    reactor.listenTCP(555, ServerFactory())
-    reactor.run()
+    print "Don't run me."
