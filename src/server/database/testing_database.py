@@ -1,6 +1,11 @@
+import sys
+sys.path.append('../..')
+
+from common import ENCODER
+
 class TestingDatabase(object):
     def __init__(self):
-        self.users = {"testing": "testing","test":"test"}
+        self.users = {"testing": ENCODER("testing"), "test": ENCODER("test")}
     def authenticate_user(self, user, password):
         user_password = self.users.get(user)
         if user_password is None:

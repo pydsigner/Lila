@@ -1,9 +1,9 @@
 import redis
 
 class RedisDatabase(object):
-    def __init__(self, host, port):
-        self.db = redis.Redis(host, port, password="letmeinnow")
-        self.user_db = redis.Redis(host, port, db=1, password="letmeinnow")
+    def __init__(self, host, port, password="letmeinnow"):
+        self.db = redis.Redis(host, port, password=password)
+        self.user_db = redis.Redis(host, port, db=1, password=password)
 
     def authenticate_user(self, user, password):
         """

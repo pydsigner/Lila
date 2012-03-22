@@ -5,7 +5,7 @@ class DatabaseNotFound(Exception):
     pass
 
 def get_database(name, *args, **kwargs):
-    databases = {"redis":RedisDatabase, "testing":TestingDatabase}
+    databases = {"redis": RedisDatabase, "testing": TestingDatabase}
     database = databases.get(name)
     if database is None:
         raise DatabaseNotFound("Did not find database in the factory.")
